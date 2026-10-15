@@ -22,3 +22,11 @@ class Attachment(FreshdeskModel):
     thumb_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class AttachmentDownload(FreshdeskModel):
+    """The bytes of a downloaded attachment, cut at ``max_bytes`` when a limit was given."""
+    name: Optional[str] = None
+    content_type: Optional[str] = None
+    data: bytes = b""
+    truncated: bool = False

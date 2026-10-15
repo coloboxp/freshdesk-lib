@@ -10,6 +10,7 @@ import httpx
 from pydantic import BaseModel
 
 from .exceptions import FreshdeskAPIError, FreshdeskAuthError, FreshdeskRateLimitError
+from .models.attachments import Attachment, AttachmentDownload
 from .rate_limiter import FreshdeskPlan, RateLimiter, resolve_calls_per_minute
 
 from .api.tickets import TicketsAPI, AsyncTicketsAPI
@@ -173,6 +174,7 @@ class Freshdesk(_BaseClient):
             domain, api_key, max_retries, plan, calls_per_minute, log_handler,
             rate_limiter, base_url,
         )
+        self.timeout = timeout
         self.client = httpx.Client(
             base_url=self.base_url,
             auth=self.auth,
@@ -263,6 +265,30 @@ class Freshdesk(_BaseClient):
                 self._handle_error(response)
             return response
 
+    def download_attachment(
+        self, attachment: Union[Attachment, str], max_bytes: Optional[int] = None
+    ) -> AttachmentDownload:
+        """Download an attachment from its pre-signed ``attachment_url``.
+
+        The URL points at Freshdesk's file storage and carries its own signature, so the request goes
+        through a separate client that sends no API credentials. The download stops at ``max_bytes``
+        and marks the result as truncated.
+        """
+        url, name, content_type = _attachment_target(attachment)
+        chunks: list = []
+        size = 0
+        with httpx.Client(timeout=self.timeout, follow_redirects=True) as files, files.stream("GET", url) as response:
+            if not response.is_success:
+                response.read()
+                self._handle_error(response)
+            for chunk in response.iter_bytes():
+                chunks.append(chunk)
+                size += len(chunk)
+                if max_bytes is not None and size >= max_bytes:
+                    return AttachmentDownload(name=name, content_type=content_type,
+                                              data=b"".join(chunks)[:max_bytes], truncated=True)
+        return AttachmentDownload(name=name, content_type=content_type, data=b"".join(chunks))
+
     def close(self) -> None:
         self.client.close()
 
@@ -295,6 +321,7 @@ class AsyncFreshdesk(_BaseClient):
             domain, api_key, max_retries, plan, calls_per_minute, log_handler,
             rate_limiter, base_url,
         )
+        self.timeout = timeout
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             auth=self.auth,
@@ -380,6 +407,26 @@ class AsyncFreshdesk(_BaseClient):
                 self._handle_error(response)
             return response
 
+    async def download_attachment(
+        self, attachment: Union[Attachment, str], max_bytes: Optional[int] = None
+    ) -> AttachmentDownload:
+        """Async equivalent of :meth:`Freshdesk.download_attachment`: no API credentials are sent."""
+        url, name, content_type = _attachment_target(attachment)
+        chunks: list = []
+        size = 0
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as files, \
+                files.stream("GET", url) as response:
+            if not response.is_success:
+                await response.aread()
+                self._handle_error(response)
+            async for chunk in response.aiter_bytes():
+                chunks.append(chunk)
+                size += len(chunk)
+                if max_bytes is not None and size >= max_bytes:
+                    return AttachmentDownload(name=name, content_type=content_type,
+                                              data=b"".join(chunks)[:max_bytes], truncated=True)
+        return AttachmentDownload(name=name, content_type=content_type, data=b"".join(chunks))
+
     async def close(self) -> None:
         await self.client.aclose()
 
@@ -388,3 +435,12 @@ class AsyncFreshdesk(_BaseClient):
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
+
+
+def _attachment_target(attachment: Union[Attachment, str]) -> tuple:
+    """(url, name, content type) of an attachment model or a bare pre-signed URL."""
+    if isinstance(attachment, str):
+        return attachment, None, None
+    if not attachment.attachment_url:
+        raise ValueError(f"Attachment {attachment.id} has no attachment_url to download.")
+    return attachment.attachment_url, attachment.name, attachment.content_type

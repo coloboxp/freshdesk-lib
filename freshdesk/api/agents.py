@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator, List
 
 if TYPE_CHECKING:
     from ..client import Freshdesk, AsyncFreshdesk
@@ -29,6 +29,10 @@ class AgentsAPI:
         """List all agents."""
         res = self._client.request("GET", "agents", params=kwargs)
         return [Agent.model_validate(c) for c in res]
+
+    def iter_all(self, **kwargs: Any) -> Iterator[Agent]:
+        """Iterate over all agents, fetching pages lazily (see ``list`` for filters)."""
+        return self._client.paginate("agents", Agent, kwargs)
         
     def search(self, term: str) -> List[Agent]:
         """Search agents by term autocomplete."""
@@ -69,6 +73,10 @@ class AsyncAgentsAPI:
         """List all agents."""
         res = await self._client.request("GET", "agents", params=kwargs)
         return [Agent.model_validate(c) for c in res]
+
+    def iter_all(self, **kwargs: Any) -> AsyncIterator[Agent]:
+        """Iterate over all agents, fetching pages lazily (see ``list`` for filters)."""
+        return self._client.paginate("agents", Agent, kwargs)
         
     async def search(self, term: str) -> List[Agent]:
         """Search agents by term autocomplete."""
