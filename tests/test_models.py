@@ -551,3 +551,18 @@ class TestMissingResourceModels:
             "created_at": TS, "updated_at": TS,
         })
         assert ft.email == "bob@co.com"
+
+
+# ---------------------------------------------------------------------------
+# SatisfactionRating
+# ---------------------------------------------------------------------------
+
+class TestSatisfactionRatingModel:
+    def test_text_id(self):
+        # The shape GET tickets/{id}/satisfaction_ratings returns for a 3-point survey.
+        r = SatisfactionRating.model_validate({
+            "id": "_1-72", "survey_id": 5000036525, "ticket_id": 19018, "created_at": TS, "updated_at": TS,
+            "ratings": {"others_meta": {}, "default_question": 100, "TY_2": None},
+        })
+        assert r.id == "_1-72" and r.ratings["default_question"] == 100
+        assert SatisfactionRating.model_validate({"id": 7}).id == 7

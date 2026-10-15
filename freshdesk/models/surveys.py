@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from datetime import datetime
 
 from .base import FreshdeskModel
@@ -6,7 +6,8 @@ from .base import FreshdeskModel
 
 class SatisfactionRating(FreshdeskModel):
     """Customer satisfaction rating."""
-    id: int
+    # Freshdesk returns numbers for some ratings and text such as "_1-72" for others.
+    id: Union[int, str]
     survey_id: Optional[int] = None
     user_id: Optional[int] = None
     agent_id: Optional[int] = None
