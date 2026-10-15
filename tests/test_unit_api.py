@@ -315,3 +315,50 @@ class TestBaseUrl:
         async with AsyncFreshdesk("x", "k", base_url="https://fd.local/api/v2/", calls_per_minute=0) as c:
             await c.tickets.view(1)
         assert route.called
+
+
+# ---------------------------------------------------------------------------
+# Fixes ported from abaskin/freshdesk-lib (90f72b7)
+# ---------------------------------------------------------------------------
+
+class TestPortedFixes:
+    @respx.mock
+    def test_company_autocomplete_reads_companies_key(self, fd):
+        respx.get(f"{BASE}/companies/autocomplete").mock(return_value=Response(
+            200, json={"companies": [{"id": 1, "name": "Acme"}]}
+        ))
+        res = fd.companies.search("Acme")
+        assert [(c.id, c.name, c.created_at) for c in res] == [(1, "Acme", None)]
+
+    @respx.mock
+    async def test_async_company_autocomplete(self, afd):
+        respx.get(f"{BASE}/companies/autocomplete").mock(
+            return_value=Response(200, json={"companies": []})
+        )
+        assert await afd.companies.search("x") == []
+
+    def test_conversation_accepts_null_emails_and_user(self):
+        c = Conversation.model_validate(
+            conv(1, to_emails=None, cc_emails=None, bcc_emails=None, user_id=None)
+        )
+        assert c.to_emails is None and c.user_id is None
+
+    @respx.mock
+    def test_get_associated(self, fd):
+        respx.get(f"{BASE}/tickets/20/associated_tickets").mock(
+            return_value=Response(200, json={"tickets": [ticket(44)]})
+        )
+        respx.get(f"{BASE}/tickets/21/associated_tickets").mock(
+            return_value=Response(404, json={})
+        )
+        assert [t.id for t in fd.tickets.get_associated(20)] == [44]
+        assert fd.tickets.get_associated(21) == []
+
+    @respx.mock
+    async def test_async_get_associated_reraises_other_errors(self, afd):
+        from freshdesk.exceptions import FreshdeskAPIError
+        respx.get(f"{BASE}/tickets/20/associated_tickets").mock(
+            return_value=Response(500, json={})
+        )
+        with pytest.raises(FreshdeskAPIError):
+            await afd.tickets.get_associated(20)

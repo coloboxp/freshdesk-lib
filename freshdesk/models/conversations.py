@@ -15,9 +15,9 @@ class Conversation(FreshdeskModel):
     source: int
     support_email: Optional[str] = None
     ticket_id: int
-    to_emails: List[str] = Field(default_factory=list)
-    cc_emails: List[str] = Field(default_factory=list)
-    bcc_emails: List[str] = Field(default_factory=list)
-    user_id: int
+    to_emails: Optional[List[str]] = Field(default_factory=list)
+    cc_emails: Optional[List[str]] = Field(default_factory=list)
+    bcc_emails: Optional[List[str]] = Field(default_factory=list)
+    user_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime

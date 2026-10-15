@@ -48,7 +48,7 @@ class CompaniesAPI:
     def search(self, name: str) -> List[Company]:
         """Search companies by name autocomplete."""
         res = self._client.request("GET", "companies/autocomplete", params={"name": name})
-        return [Company.model_validate(c) for c in res]
+        return [Company.model_validate(c) for c in res.get("companies", [])]
 
     def update(self, id: int, **kwargs: Any) -> Company:
         """Update a company."""
@@ -101,7 +101,7 @@ class AsyncCompaniesAPI:
     async def search(self, name: str) -> List[Company]:
         """Search companies by name autocomplete."""
         res = await self._client.request("GET", "companies/autocomplete", params={"name": name})
-        return [Company.model_validate(c) for c in res]
+        return [Company.model_validate(c) for c in res.get("companies", [])]
 
     async def update(self, id: int, **kwargs: Any) -> Company:
         """Update a company."""

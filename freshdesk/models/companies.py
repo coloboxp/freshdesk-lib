@@ -7,6 +7,7 @@ from .base import FreshdeskModel
 class Company(FreshdeskModel):
     id: int
     name: str
+    org_company_id: Optional[str] = None
     description: Optional[str] = None
     domains: List[str] = Field(default_factory=list)
     note: Optional[str] = None
@@ -15,5 +16,5 @@ class Company(FreshdeskModel):
     renewal_date: Optional[datetime] = None
     industry: Optional[str] = None
     custom_fields: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

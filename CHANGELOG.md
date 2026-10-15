@@ -19,6 +19,9 @@ All notable changes to this project will be documented in this file.
   `RateLimiter(calls, window=...)` for hourly quotas.
 - `base_url=` on `Freshdesk` / `AsyncFreshdesk` (default `https://{domain}.freshdesk.com/api/v2/`).
 - `py.typed` marker (PEP 561).
+- `tickets.get_associated(id)` for `GET /tickets/{id}/associated_tickets`; a 404 returns `[]`
+  (ported from abaskin/freshdesk-lib).
+- `Company.org_company_id` (ported from abaskin/freshdesk-lib).
 
 - **Structured logging** (`freshdesk/log.py`):
   - Uses Python's standard `logging` module under the `"freshdesk"` logger hierarchy.
@@ -48,6 +51,11 @@ All notable changes to this project will be documented in this file.
 - `filter()` wraps the query in double quotes and encodes spaces as `%20`, as the API requires.
 - `solutions.search_articles` sent `keyword=`; the API expects `term=`.
 - Multipart uploads no longer get a forced `Content-Type: application/json`.
+- `companies.search` reads the `companies` key of the autocomplete response; `Company.created_at`
+  and `updated_at` are optional because autocomplete returns only `id` and `name`
+  (ported from abaskin/freshdesk-lib).
+- `Conversation.to_emails/cc_emails/bcc_emails/user_id` accept `null` from the API
+  (ported from abaskin/freshdesk-lib).
 - **ScenarioAutomation model** (`freshdesk/models/automations.py`):
   - Made `created_at` and `updated_at` fields optional since the API may not return them.
 - **Integration tests** (`tests/test_api_*.py`):

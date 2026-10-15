@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator, List, Optional, 
 if TYPE_CHECKING:
     from ..client import Freshdesk, AsyncFreshdesk
 from ..models.base import PaginatedList
+from ..exceptions import FreshdeskAPIError
 from ..models.tickets import Ticket
 from ._common import AttachmentInput, body_kwargs, search_path
 
@@ -73,6 +74,19 @@ class TicketsAPI:
     def forward(self, id: int, **kwargs: Any) -> Any:
         self._client.request("POST", f"tickets/{id}/forward", json=kwargs)
 
+    def get_associated(self, id: int) -> List[Ticket]:
+        """List the tickets associated with a ticket (child, tracker, related).
+
+        Returns ``[]`` when Freshdesk answers 404 (ticket without associations).
+        """
+        try:
+            res = self._client.request("GET", f"tickets/{id}/associated_tickets")
+        except FreshdeskAPIError as e:
+            if e.status_code != 404:
+                raise
+            return []
+        return [Ticket.model_validate(t) for t in res.get("tickets", [])]
+
 
 class AsyncTicketsAPI:
     """Asynchronous implementation of the Tickets API."""
@@ -139,3 +153,16 @@ class AsyncTicketsAPI:
 
     async def forward(self, id: int, **kwargs: Any) -> Any:
         await self._client.request("POST", f"tickets/{id}/forward", json=kwargs)
+
+    async def get_associated(self, id: int) -> List[Ticket]:
+        """List the tickets associated with a ticket (child, tracker, related).
+
+        Returns ``[]`` when Freshdesk answers 404 (ticket without associations).
+        """
+        try:
+            res = await self._client.request("GET", f"tickets/{id}/associated_tickets")
+        except FreshdeskAPIError as e:
+            if e.status_code != 404:
+                raise
+            return []
+        return [Ticket.model_validate(t) for t in res.get("tickets", [])]
