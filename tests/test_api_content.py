@@ -255,6 +255,11 @@ class TestSurveysSync:
         result = api_or_skip(client.surveys.list_satisfaction_ratings)
         assert isinstance(result, list)
 
+    def test_list_ticket_satisfaction_ratings(self, client):
+        ticket = client.tickets.list()[0]
+        result = api_or_skip(client.surveys.list_ticket_satisfaction_ratings, ticket.id)
+        assert all(r.ticket_id == ticket.id for r in result)
+
 
 class TestSurveysAsync:
     async def test_list_surveys(self, async_client):
@@ -266,3 +271,10 @@ class TestSurveysAsync:
             async_client.surveys.list_satisfaction_ratings()
         )
         assert isinstance(result, list)
+
+    async def test_list_ticket_satisfaction_ratings(self, async_client):
+        ticket = (await async_client.tickets.list())[0]
+        result = await async_api_or_skip(
+            async_client.surveys.list_ticket_satisfaction_ratings(ticket.id)
+        )
+        assert all(r.ticket_id == ticket.id for r in result)

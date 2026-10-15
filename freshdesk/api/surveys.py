@@ -21,6 +21,14 @@ class SurveysAPI:
         res = self._client.request("GET", "surveys/satisfaction_ratings", params=kwargs)
         return [SatisfactionRating.model_validate(r) for r in res]
 
+    def list_ticket_satisfaction_ratings(self, ticket_id: int) -> List[SatisfactionRating]:
+        """View the satisfaction ratings of one ticket.
+
+        Unlike :meth:`list_satisfaction_ratings`, which needs an admin, any agent who can see the ticket may call it.
+        """
+        res = self._client.request("GET", f"tickets/{ticket_id}/satisfaction_ratings")
+        return [SatisfactionRating.model_validate(r) for r in res]
+
 
 class AsyncSurveysAPI:
     """Asynchronous implementation of the Surveys API."""
@@ -35,4 +43,9 @@ class AsyncSurveysAPI:
     async def list_satisfaction_ratings(self, **kwargs: Any) -> List[SatisfactionRating]:
         """View all satisfaction ratings."""
         res = await self._client.request("GET", "surveys/satisfaction_ratings", params=kwargs)
+        return [SatisfactionRating.model_validate(r) for r in res]
+
+    async def list_ticket_satisfaction_ratings(self, ticket_id: int) -> List[SatisfactionRating]:
+        """View the satisfaction ratings of one ticket (any agent who can see the ticket)."""
+        res = await self._client.request("GET", f"tickets/{ticket_id}/satisfaction_ratings")
         return [SatisfactionRating.model_validate(r) for r in res]
