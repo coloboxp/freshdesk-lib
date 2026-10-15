@@ -362,3 +362,14 @@ class TestPortedFixes:
         )
         with pytest.raises(FreshdeskAPIError):
             await afd.tickets.get_associated(20)
+
+
+
+def test_null_lists_become_empty_lists():
+    from freshdesk.models.tickets import Ticket
+    ticket = Ticket.model_validate({
+        "id": 1, "priority": 1, "requester_id": 2, "source": 1, "status": 2, "subject": "s",
+        "created_at": "2020-01-01T00:00:00Z", "updated_at": "2020-01-01T00:00:00Z",
+        "reply_cc_emails": None, "cc_emails": None, "fwd_emails": None, "tags": None,
+    })
+    assert (ticket.reply_cc_emails, ticket.cc_emails, ticket.fwd_emails, ticket.tags) == ([], [], [], [])
