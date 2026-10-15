@@ -1,18 +1,24 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator, List, Optional, Sequence
 
 if TYPE_CHECKING:
     from ..client import Freshdesk, AsyncFreshdesk
+from ..models.base import PaginatedList
 from ..models.tickets import Ticket
+from ._common import AttachmentInput, body_kwargs, search_path
 
 class TicketsAPI:
     """Synchronous implementation of the Tickets API."""
     def __init__(self, client: Freshdesk):
         self._client = client
 
-    def create(self, **kwargs: Any) -> Ticket:
-        """Create a new ticket."""
-        res = self._client.request("POST", "tickets", json=kwargs)
+    def create(
+        self, attachments: Optional[Sequence[AttachmentInput]] = None, **kwargs: Any
+    ) -> Ticket:
+        """Create a new ticket.  *attachments* switches to a multipart upload."""
+        res = self._client.request(
+            "POST", "tickets", **body_kwargs(kwargs, attachments)
+        )
         return Ticket.model_validate(res)
 
     def view(self, id: int, include: Optional[str] = None) -> Ticket:
@@ -25,15 +31,35 @@ class TicketsAPI:
         """List all tickets."""
         res = self._client.request("GET", "tickets", params=kwargs)
         return [Ticket.model_validate(t) for t in res]
-        
-    def filter(self, query: str) -> List[Ticket]:
-        """Filter tickets using a query string."""
-        res = self._client.request("GET", "search/tickets", params={"query": query})
-        return [Ticket.model_validate(t) for t in res.get("results", [])]
 
-    def update(self, id: int, **kwargs: Any) -> Ticket:
-        """Update a ticket."""
-        res = self._client.request("PUT", f"tickets/{id}", json=kwargs)
+    def iter_all(self, **kwargs: Any) -> Iterator[Ticket]:
+        """Iterate over all tickets, fetching pages lazily (see ``list`` for filters)."""
+        return self._client.paginate("tickets", Ticket, kwargs)
+        
+    def filter(
+        self, query: str, page: Optional[int] = None
+    ) -> PaginatedList[Ticket]:
+        """Filter tickets with a Freshdesk query, e.g. ``"status:2 AND priority:3"``.
+
+        The query is wrapped in double quotes unless it already is.  Each
+        page holds 30 results; *page* can be 1-10.  ``total`` is the full
+        match count.
+        """
+        res = self._client.request("GET", search_path("tickets", query, page))
+        return PaginatedList[Ticket](
+            items=res.get("results", []), total=res.get("total")
+        )
+
+    def update(
+        self,
+        id: int,
+        attachments: Optional[Sequence[AttachmentInput]] = None,
+        **kwargs: Any,
+    ) -> Ticket:
+        """Update a ticket.  *attachments* switches to a multipart upload."""
+        res = self._client.request(
+            "PUT", f"tickets/{id}", **body_kwargs(kwargs, attachments)
+        )
         return Ticket.model_validate(res)
 
     def delete(self, id: int) -> None:
@@ -53,9 +79,13 @@ class AsyncTicketsAPI:
     def __init__(self, client: AsyncFreshdesk):
         self._client = client
 
-    async def create(self, **kwargs: Any) -> Ticket:
-        """Create a new ticket."""
-        res = await self._client.request("POST", "tickets", json=kwargs)
+    async def create(
+        self, attachments: Optional[Sequence[AttachmentInput]] = None, **kwargs: Any
+    ) -> Ticket:
+        """Create a new ticket.  *attachments* switches to a multipart upload."""
+        res = await self._client.request(
+            "POST", "tickets", **body_kwargs(kwargs, attachments)
+        )
         return Ticket.model_validate(res)
 
     async def view(self, id: int, include: Optional[str] = None) -> Ticket:
@@ -68,15 +98,35 @@ class AsyncTicketsAPI:
         """List all tickets."""
         res = await self._client.request("GET", "tickets", params=kwargs)
         return [Ticket.model_validate(t) for t in res]
-        
-    async def filter(self, query: str) -> List[Ticket]:
-        """Filter tickets using a query string."""
-        res = await self._client.request("GET", "search/tickets", params={"query": query})
-        return [Ticket.model_validate(t) for t in res.get("results", [])]
 
-    async def update(self, id: int, **kwargs: Any) -> Ticket:
-        """Update a ticket."""
-        res = await self._client.request("PUT", f"tickets/{id}", json=kwargs)
+    def iter_all(self, **kwargs: Any) -> AsyncIterator[Ticket]:
+        """Iterate over all tickets, fetching pages lazily (see ``list`` for filters)."""
+        return self._client.paginate("tickets", Ticket, kwargs)
+        
+    async def filter(
+        self, query: str, page: Optional[int] = None
+    ) -> PaginatedList[Ticket]:
+        """Filter tickets with a Freshdesk query, e.g. ``"status:2 AND priority:3"``.
+
+        The query is wrapped in double quotes unless it already is.  Each
+        page holds 30 results; *page* can be 1-10.  ``total`` is the full
+        match count.
+        """
+        res = await self._client.request("GET", search_path("tickets", query, page))
+        return PaginatedList[Ticket](
+            items=res.get("results", []), total=res.get("total")
+        )
+
+    async def update(
+        self,
+        id: int,
+        attachments: Optional[Sequence[AttachmentInput]] = None,
+        **kwargs: Any,
+    ) -> Ticket:
+        """Update a ticket.  *attachments* switches to a multipart upload."""
+        res = await self._client.request(
+            "PUT", f"tickets/{id}", **body_kwargs(kwargs, attachments)
+        )
         return Ticket.model_validate(res)
 
     async def delete(self, id: int) -> None:

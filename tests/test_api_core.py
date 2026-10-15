@@ -57,7 +57,7 @@ class TestTicketsSync:
             filtered = client.tickets.filter(
                 query='"subject:[TEST] freshdesk-lib integration"'
             )
-            assert isinstance(filtered, list)
+            assert isinstance(filtered.items, list)
         finally:
             client.tickets.delete(t.id)
 
@@ -114,7 +114,7 @@ class TestTicketsAsync:
             filtered = await async_client.tickets.filter(
                 query='"subject:[TEST] freshdesk-lib"'
             )
-            assert isinstance(filtered, list)
+            assert isinstance(filtered.items, list)
         finally:
             await async_client.tickets.delete(t.id)
 
@@ -358,7 +358,7 @@ class TestCompaniesSync:
             assert isinstance(searched, list)
 
             filtered = client.companies.filter(query='"name:[TEST] Pytest Corp"')
-            assert isinstance(filtered, list)
+            assert isinstance(filtered.items, list)
         finally:
             client.companies.delete(c.id)
 
@@ -387,7 +387,7 @@ class TestCompaniesAsync:
             filtered = await async_client.companies.filter(
                 query='"name:[TEST] Async Corp"'
             )
-            assert isinstance(filtered, list)
+            assert isinstance(filtered.items, list)
         finally:
             await async_client.companies.delete(c.id)
 

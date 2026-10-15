@@ -1,9 +1,11 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator, List, Optional
 
 if TYPE_CHECKING:
     from ..client import Freshdesk, AsyncFreshdesk
+from ..models.base import PaginatedList
 from ..models.contacts import Contact
+from ._common import search_path
 
 class ContactsAPI:
     """Synchronous implementation of the Contacts API."""
@@ -24,11 +26,24 @@ class ContactsAPI:
         """List all contacts."""
         res = self._client.request("GET", "contacts", params=kwargs)
         return [Contact.model_validate(c) for c in res]
+
+    def iter_all(self, **kwargs: Any) -> Iterator[Contact]:
+        """Iterate over all contacts, fetching pages lazily (see ``list`` for filters)."""
+        return self._client.paginate("contacts", Contact, kwargs)
         
-    def filter(self, query: str) -> List[Contact]:
-        """Filter contacts using a query string."""
-        res = self._client.request("GET", "search/contacts", params={"query": query})
-        return [Contact.model_validate(c) for c in res.get("results", [])]
+    def filter(
+        self, query: str, page: Optional[int] = None
+    ) -> PaginatedList[Contact]:
+        """Filter contacts with a Freshdesk query, e.g. ``"status:2 AND priority:3"``.
+
+        The query is wrapped in double quotes unless it already is.  Each
+        page holds 30 results; *page* can be 1-10.  ``total`` is the full
+        match count.
+        """
+        res = self._client.request("GET", search_path("contacts", query, page))
+        return PaginatedList[Contact](
+            items=res.get("results", []), total=res.get("total")
+        )
         
     def search(self, term: str) -> List[Contact]:
         """Search contacts by term."""
@@ -88,11 +103,24 @@ class AsyncContactsAPI:
         """List all contacts."""
         res = await self._client.request("GET", "contacts", params=kwargs)
         return [Contact.model_validate(c) for c in res]
+
+    def iter_all(self, **kwargs: Any) -> AsyncIterator[Contact]:
+        """Iterate over all contacts, fetching pages lazily (see ``list`` for filters)."""
+        return self._client.paginate("contacts", Contact, kwargs)
         
-    async def filter(self, query: str) -> List[Contact]:
-        """Filter contacts using a query string."""
-        res = await self._client.request("GET", "search/contacts", params={"query": query})
-        return [Contact.model_validate(c) for c in res.get("results", [])]
+    async def filter(
+        self, query: str, page: Optional[int] = None
+    ) -> PaginatedList[Contact]:
+        """Filter contacts with a Freshdesk query, e.g. ``"status:2 AND priority:3"``.
+
+        The query is wrapped in double quotes unless it already is.  Each
+        page holds 30 results; *page* can be 1-10.  ``total`` is the full
+        match count.
+        """
+        res = await self._client.request("GET", search_path("contacts", query, page))
+        return PaginatedList[Contact](
+            items=res.get("results", []), total=res.get("total")
+        )
         
     async def search(self, term: str) -> List[Contact]:
         """Search contacts by term."""

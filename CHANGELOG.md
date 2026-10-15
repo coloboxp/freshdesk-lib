@@ -6,6 +6,20 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `conversations.list(ticket_id, page=None)` and `conversations.iter_all(ticket_id)` for
+  `GET /tickets/{id}/conversations` (`include=conversations` returns only 10).
+- `client.paginate(path, model, params)` and `iter_all()` on tickets, contacts, companies and
+  conversations: lazy auto-pagination that follows the `link` header. It always stays on the
+  configured base URL.
+- `filter(query, page=None)` on tickets, contacts and companies: `page` (1-10) and `total`.
+- `Attachment` model; `Ticket.attachments` and `Conversation.attachments` are now typed.
+- `attachments=` on `tickets.create/update` and `conversations.create_reply/create_note`
+  sends `multipart/form-data`.
+- `rate_limiter=` on `Freshdesk` / `AsyncFreshdesk` to share one limiter across clients;
+  `RateLimiter(calls, window=...)` for hourly quotas.
+- `base_url=` on `Freshdesk` / `AsyncFreshdesk` (default `https://{domain}.freshdesk.com/api/v2/`).
+- `py.typed` marker (PEP 561).
+
 - **Structured logging** (`freshdesk/log.py`):
   - Uses Python's standard `logging` module under the `"freshdesk"` logger hierarchy.
   - **DEBUG**: every request/response with method, path, status, and latency in ms.
@@ -24,8 +38,16 @@ All notable changes to this project will be documented in this file.
   - Self-corrects from `X-RateLimit-Remaining` response headers so the limiter adapts when other clients share the same account quota.
   - Thread-safe for sync clients, async-safe for async clients.
 
+### Changed (breaking)
+
+- `tickets/contacts/companies.filter()` return `PaginatedList` (`.items`, `.total`) instead of a list.
+- `solutions.search_articles(term)` replaces `search_articles(keyword)`.
+
 ### Fixed
 
+- `filter()` wraps the query in double quotes and encodes spaces as `%20`, as the API requires.
+- `solutions.search_articles` sent `keyword=`; the API expects `term=`.
+- Multipart uploads no longer get a forced `Content-Type: application/json`.
 - **ScenarioAutomation model** (`freshdesk/models/automations.py`):
   - Made `created_at` and `updated_at` fields optional since the API may not return them.
 - **Integration tests** (`tests/test_api_*.py`):

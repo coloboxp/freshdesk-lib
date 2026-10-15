@@ -2,11 +2,12 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import Field
 
+from .attachments import Attachment
 from .base import FreshdeskModel
 
 class Ticket(FreshdeskModel):
     id: int
-    attachments: List[Dict[str, Any]] = Field(default_factory=list)
+    attachments: List[Attachment] = Field(default_factory=list)
     cc_emails: List[str] = Field(default_factory=list)
     company_id: Optional[int] = None
     custom_fields: Dict[str, Any] = Field(default_factory=dict)

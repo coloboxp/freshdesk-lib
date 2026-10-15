@@ -75,8 +75,13 @@ def resolve_calls_per_minute(
 class RateLimiter:
     """Thread-safe / async-safe sliding-window rate limiter.
 
-    Tracks request timestamps over a 60-second window and blocks (sync)
-    or awaits (async) when the next request would exceed the budget.
+    Tracks request timestamps over a sliding window (60 seconds by default)
+    and blocks (sync) or awaits (async) when the next request would exceed
+    the budget.  For an hourly account quota use, for example,
+    ``RateLimiter(5000, window=3600)``.
+
+    One instance can be shared by many clients (pass it as
+    ``rate_limiter=``) so they all draw from the same account-wide budget.
 
     After every HTTP response the caller should invoke
     :meth:`update_from_headers` so the limiter can self-correct against
@@ -84,9 +89,9 @@ class RateLimiter:
     on the same Freshdesk account).
     """
 
-    def __init__(self, calls_per_minute: int) -> None:
+    def __init__(self, calls_per_minute: int, window: float = 60.0) -> None:
         self._max_calls = calls_per_minute
-        self._window = 60.0
+        self._window = window
         self._timestamps: deque[float] = deque()
         self._lock = Lock()
         self._async_lock: Optional[asyncio.Lock] = None
@@ -96,6 +101,11 @@ class RateLimiter:
     @property
     def calls_per_minute(self) -> int:
         return self._max_calls
+
+    @property
+    def window(self) -> float:
+        """Length of the sliding window in seconds."""
+        return self._window
 
     @property
     def current_usage(self) -> int:

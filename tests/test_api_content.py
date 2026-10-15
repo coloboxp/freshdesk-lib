@@ -166,7 +166,7 @@ class TestSolutionsSync:
             articles = client.solutions.list_articles(folder.id)
             assert isinstance(articles, list)
 
-            searched = client.solutions.search_articles(keyword="[TEST]")
+            searched = client.solutions.search_articles(term="[TEST]")
             assert isinstance(searched, list)
 
             client.solutions.delete_article(article.id)
@@ -233,7 +233,7 @@ class TestSolutionsAsync:
             articles = await async_client.solutions.list_articles(folder.id)
             assert isinstance(articles, list)
 
-            searched = await async_client.solutions.search_articles(keyword="[TEST]")
+            searched = await async_client.solutions.search_articles(term="[TEST]")
             assert isinstance(searched, list)
 
             await async_client.solutions.delete_article(article.id)

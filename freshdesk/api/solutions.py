@@ -71,8 +71,9 @@ class SolutionsAPI:
     def delete_article(self, id: int) -> None:
         self._client.request("DELETE", f"solutions/articles/{id}")
 
-    def search_articles(self, keyword: str) -> List[SolutionArticle]:
-        res = self._client.request("GET", "search/solutions", params={"keyword": keyword})
+    def search_articles(self, term: str) -> List[SolutionArticle]:
+        """Search solution articles (``GET search/solutions?term=``)."""
+        res = self._client.request("GET", "search/solutions", params={"term": term})
         return [SolutionArticle.model_validate(a) for a in res]
 
 
@@ -141,6 +142,7 @@ class AsyncSolutionsAPI:
     async def delete_article(self, id: int) -> None:
         await self._client.request("DELETE", f"solutions/articles/{id}")
 
-    async def search_articles(self, keyword: str) -> List[SolutionArticle]:
-        res = await self._client.request("GET", "search/solutions", params={"keyword": keyword})
+    async def search_articles(self, term: str) -> List[SolutionArticle]:
+        """Search solution articles (``GET search/solutions?term=``)."""
+        res = await self._client.request("GET", "search/solutions", params={"term": term})
         return [SolutionArticle.model_validate(a) for a in res]

@@ -91,6 +91,51 @@ client = Freshdesk(domain="x", api_key="k", calls_per_minute=0)
 
 The limiter also reads `X-RateLimit-Remaining` from every response to self-correct when other clients or apps share the same account quota.
 
+The quota belongs to the Freshdesk account, not to the API key. When one process runs many clients (for example one per user), give them one shared limiter. `window` sets the length of the sliding window in seconds:
+
+```python
+from freshdesk import Freshdesk, RateLimiter
+
+shared = RateLimiter(5000, window=3600)   # 5,000 calls per hour for the whole account
+alice = Freshdesk(domain="x", api_key=alice_key, rate_limiter=shared)
+bob = Freshdesk(domain="x", api_key=bob_key, rate_limiter=shared)
+```
+
+## Base URL
+
+Requests go to `https://{domain}.freshdesk.com/api/v2/` by default. Pass `base_url` (the full API root) to use another host, such as a proxy or a test server:
+
+```python
+client = Freshdesk(domain="x", api_key="k", base_url="https://proxy.example.com/api/v2")
+```
+
+## Pagination, filters and attachments
+
+```python
+# Every list endpoint returns one page; iter_all() walks all pages lazily
+# using the `link` header. Stop early to save API calls.
+for ticket in client.tickets.iter_all(per_page=100, updated_since="2026-01-01T00:00:00Z"):
+    ...
+for note in client.conversations.iter_all(ticket_id=42):   # full thread, not just 10
+    ...
+page_two = client.conversations.list(42, page=2)          # 30 per page
+# Any other list endpoint:
+client.paginate("groups", Group, {"per_page": 100})  # Group from freshdesk.models.groups
+
+# filter(): the query is wrapped in double quotes for you; page is 1-10.
+result = client.tickets.filter("status:2 AND priority:3", page=1)
+print(result.total, [t.id for t in result.items])
+
+# Solution search
+articles = client.solutions.search_articles(term="vpn")
+
+# Attachments switch the request to multipart/form-data
+client.conversations.create_note(
+    42, body="Log attached", private=True,
+    attachments=[("app.log", open("app.log", "rb"), "text/plain")],
+)
+```
+
 ## Logging
 
 The library logs under the `"freshdesk"` logger using Python's standard `logging` module. Silent by default.
@@ -138,12 +183,12 @@ logging.getLogger("freshdesk").addHandler(my_handler)
 
 All resources follow the `client.<resource>.<action>()` pattern:
 
-- `tickets` — CRUD, filter, restore, forward
-- `contacts` — CRUD, filter, search, merge, make_agent, send_invite
-- `companies` — CRUD, filter, search
+- `tickets` — CRUD (with attachments), iter_all, filter, restore, forward
+- `contacts` — CRUD, iter_all, filter, search, merge, make_agent, send_invite
+- `companies` — CRUD, iter_all, filter, search
 - `agents` — CRUD, me, search
 - `groups` — CRUD
-- `conversations` — reply, note, update, delete, reply_to_forward
+- `conversations` — list, iter_all, reply and note (with attachments), update, delete, reply_to_forward
 - `roles` — view, list
 - `skills` — CRUD
 - `time_entries` — CRUD, toggle_timer

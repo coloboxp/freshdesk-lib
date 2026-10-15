@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, AsyncIterator, Dict, Iterator, Optional, Type, TypeVar, Union
 from urllib.parse import urljoin
 
 import httpx
+from pydantic import BaseModel
 
 from .exceptions import FreshdeskAPIError, FreshdeskAuthError, FreshdeskRateLimitError
 from .rate_limiter import FreshdeskPlan, RateLimiter, resolve_calls_per_minute
@@ -32,7 +33,7 @@ from .api.forms_messages import FormsMessagesAPI, AsyncFormsMessagesAPI
 from .api.admin_resources import AdminResourcesAPI, AsyncAdminResourcesAPI
 from .api.missing_resources import MissingResourcesAPI, AsyncMissingResourcesAPI
 
-T = TypeVar("T")
+M = TypeVar("M", bound=BaseModel)
 
 log = logging.getLogger("freshdesk.client")
 
@@ -48,30 +49,59 @@ class _BaseClient:
         plan: Union[str, FreshdeskPlan, None] = None,
         calls_per_minute: Optional[int] = None,
         log_handler: Optional[logging.Handler] = None,
+        rate_limiter: Optional[RateLimiter] = None,
+        base_url: Optional[str] = None,
     ) -> None:
         self.domain = domain
         self.api_key = api_key
         self.max_retries = max_retries
-        self.base_url = f"https://{domain}.freshdesk.com/api/v2/"
+        self.base_url = (
+            base_url.rstrip("/") + "/"
+            if base_url
+            else f"https://{domain}.freshdesk.com/api/v2/"
+        )
         self.auth = (api_key, "X")
 
         if log_handler is not None:
             logging.getLogger("freshdesk").addHandler(log_handler)
 
-        effective_cpm = resolve_calls_per_minute(plan, calls_per_minute)
-        self._rate_limiter: Optional[RateLimiter] = (
-            RateLimiter(effective_cpm) if effective_cpm else None
-        )
+        if rate_limiter is not None:
+            self._rate_limiter: Optional[RateLimiter] = rate_limiter
+            rl_desc = f"shared {rate_limiter.calls_per_minute}/{rate_limiter.window:g}s"
+        else:
+            effective_cpm = resolve_calls_per_minute(plan, calls_per_minute)
+            self._rate_limiter = RateLimiter(effective_cpm) if effective_cpm else None
+            rl_desc = f"{effective_cpm}/min" if effective_cpm else "disabled"
 
-        rl_desc = f"{effective_cpm}/min" if effective_cpm else "disabled"
         log.info(
-            "Initialized %s for %s.freshdesk.com (rate_limit=%s, max_retries=%d)",
-            type(self).__name__, domain, rl_desc, max_retries,
+            "Initialized %s for %s (rate_limit=%s, max_retries=%d)",
+            type(self).__name__, self.base_url, rl_desc, max_retries,
         )
 
     @property
     def rate_limiter(self) -> Optional[RateLimiter]:
         return self._rate_limiter
+
+    def _prepare(self, path: str, kwargs: Dict[str, Any]) -> str:
+        """Resolve *path* to a URL and set the JSON content type.
+
+        Multipart uploads (``files=``) are left alone so httpx can set
+        ``multipart/form-data`` with its boundary.
+        """
+        if "files" not in kwargs:
+            kwargs["headers"] = {
+                "Content-Type": "application/json",
+                **(kwargs.get("headers") or {}),
+            }
+        return urljoin(self.base_url, path.lstrip("/"))
+
+    @staticmethod
+    def _decode(response: httpx.Response) -> Any:
+        if response.status_code == 204:
+            return None
+        if response.headers.get("Content-Type", "").startswith("application/json"):
+            return response.json()
+        return response.content
 
     def _handle_error(self, response: httpx.Response) -> None:
         if response.status_code in (401, 403):
@@ -118,6 +148,13 @@ class Freshdesk(_BaseClient):
         Optional handler attached to the ``"freshdesk"`` logger on init.
         Convenience shortcut so callers don't have to touch :mod:`logging`
         directly.  For example, pass a :class:`~freshdesk.log.CallbackHandler`.
+    rate_limiter : RateLimiter | None
+        Use this limiter instead of building one from *plan* /
+        *calls_per_minute*.  The Freshdesk quota is per account, so pass the
+        same instance to every client that uses the same account.
+    base_url : str | None
+        Full API root, e.g. ``"https://support.example.com/api/v2"``.
+        Defaults to ``https://{domain}.freshdesk.com/api/v2/``.
     """
 
     def __init__(
@@ -129,13 +166,17 @@ class Freshdesk(_BaseClient):
         plan: Union[str, FreshdeskPlan, None] = None,
         calls_per_minute: Optional[int] = None,
         log_handler: Optional[logging.Handler] = None,
+        rate_limiter: Optional[RateLimiter] = None,
+        base_url: Optional[str] = None,
     ) -> None:
-        super().__init__(domain, api_key, max_retries, plan, calls_per_minute, log_handler)
+        super().__init__(
+            domain, api_key, max_retries, plan, calls_per_minute, log_handler,
+            rate_limiter, base_url,
+        )
         self.client = httpx.Client(
             base_url=self.base_url,
             auth=self.auth,
             timeout=timeout,
-            headers={"Content-Type": "application/json"},
         )
         self.tickets = TicketsAPI(self)
         self.contacts = ContactsAPI(self)
@@ -160,14 +201,37 @@ class Freshdesk(_BaseClient):
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
         """Make a synchronous HTTP request to the Freshdesk API."""
+        return self._decode(self._send(method, path, **kwargs))
+
+    def paginate(
+        self, path: str, model: Type[M], params: Optional[Dict[str, Any]] = None
+    ) -> Iterator[M]:
+        """Yield every item of a paged list endpoint.
+
+        Requests ``page=1, 2, ...`` (starting at ``params["page"]`` if set)
+        until the response has no ``link: <...>; rel="next"`` header.  Pages
+        are fetched lazily, so stopping early saves API calls.
+        """
+        params = dict(params or {})
+        page = int(params.pop("page", 1))
+        while True:
+            response = self._send("GET", path, params={**params, "page": page})
+            for item in response.json():
+                yield model.model_validate(item)
+            if "next" not in response.links:
+                return
+            page += 1
+
+    def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Send a request with rate limiting, 429 retries and error mapping."""
         if self._rate_limiter is not None:
             self._rate_limiter.acquire()
 
-        url = urljoin(self.base_url, path.lstrip("/"))
+        url = self._prepare(path, kwargs)
         log.debug("→ %s %s", method, path)
         retries = 0
 
-        while retries <= self.max_retries:
+        while True:
             t0 = time.monotonic()
             response = self.client.request(method, url, **kwargs)
             elapsed_ms = (time.monotonic() - t0) * 1000
@@ -197,15 +261,7 @@ class Freshdesk(_BaseClient):
 
             if not response.is_success:
                 self._handle_error(response)
-
-            if response.status_code == 204:
-                return None
-
-            if response.headers.get("Content-Type", "").startswith(
-                "application/json"
-            ):
-                return response.json()
-            return response.content
+            return response
 
     def close(self) -> None:
         self.client.close()
@@ -232,13 +288,17 @@ class AsyncFreshdesk(_BaseClient):
         plan: Union[str, FreshdeskPlan, None] = None,
         calls_per_minute: Optional[int] = None,
         log_handler: Optional[logging.Handler] = None,
+        rate_limiter: Optional[RateLimiter] = None,
+        base_url: Optional[str] = None,
     ) -> None:
-        super().__init__(domain, api_key, max_retries, plan, calls_per_minute, log_handler)
+        super().__init__(
+            domain, api_key, max_retries, plan, calls_per_minute, log_handler,
+            rate_limiter, base_url,
+        )
         self.client = httpx.AsyncClient(
             base_url=self.base_url,
             auth=self.auth,
             timeout=timeout,
-            headers={"Content-Type": "application/json"},
         )
         self.tickets = AsyncTicketsAPI(self)
         self.contacts = AsyncContactsAPI(self)
@@ -263,14 +323,32 @@ class AsyncFreshdesk(_BaseClient):
 
     async def request(self, method: str, path: str, **kwargs: Any) -> Any:
         """Make an asynchronous HTTP request to the Freshdesk API."""
+        return self._decode(await self._send(method, path, **kwargs))
+
+    async def paginate(
+        self, path: str, model: Type[M], params: Optional[Dict[str, Any]] = None
+    ) -> AsyncIterator[M]:
+        """Async equivalent of :meth:`Freshdesk.paginate`."""
+        params = dict(params or {})
+        page = int(params.pop("page", 1))
+        while True:
+            response = await self._send("GET", path, params={**params, "page": page})
+            for item in response.json():
+                yield model.model_validate(item)
+            if "next" not in response.links:
+                return
+            page += 1
+
+    async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Send a request with rate limiting, 429 retries and error mapping."""
         if self._rate_limiter is not None:
             await self._rate_limiter.async_acquire()
 
-        url = urljoin(self.base_url, path.lstrip("/"))
+        url = self._prepare(path, kwargs)
         log.debug("→ %s %s", method, path)
         retries = 0
 
-        while retries <= self.max_retries:
+        while True:
             t0 = time.monotonic()
             response = await self.client.request(method, url, **kwargs)
             elapsed_ms = (time.monotonic() - t0) * 1000
@@ -300,15 +378,7 @@ class AsyncFreshdesk(_BaseClient):
 
             if not response.is_success:
                 self._handle_error(response)
-
-            if response.status_code == 204:
-                return None
-
-            if response.headers.get("Content-Type", "").startswith(
-                "application/json"
-            ):
-                return response.json()
-            return response.content
+            return response
 
     async def close(self) -> None:
         await self.client.aclose()
